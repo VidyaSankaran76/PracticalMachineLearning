@@ -1,0 +1,131 @@
+---
+title: "PML_Project"
+author: "Vidya Sankaran"
+date: "January 19, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive Summary
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively.
+These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. 
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. to find how well they do the activities correctly or incorrectly.
+
+The data for training and testing downloaded from the website and stored.
+
+```{r "Download data"}
+download.file(destfile="pml-training.csv", "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+
+download.file(destfile="pml-testing.csv", "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+
+```
+
+## Exploratory Data Analysis
+
+We can look in to the training data and see the relationship
+
+```{r "reading training data", echo=FALSE }
+library(ggplot2)
+library(dplyr)
+library(lattice)
+library(caret)
+library(kernlab)
+library(AppliedPredictiveModeling)
+
+training <- read.csv("./pml-training.csv", header=TRUE)
+str(training)
+summary(training)
+names_training <- names(training)
+str(training$classe)
+train <- training[, -1]
+
+testing <- read.csv("./pml-testing.csv", header=TRUE)
+str(testing)
+names(testing)
+```
+
+
+
+
+
+```{r "Make Small Subset"}
+xx<- grep ("[x]\\b", names_training  )
+xy <- grep ("[y]\\b", names_training  )
+xz <- grep ("[z]\\b", names_training  )
+y <- grep ("^total", names_training  )
+r <- grep ("^roll", names_training  )
+p <- grep ("^pitch", names_training  )
+ya <- grep ("^yaw", names_training  )
+#z <- grep ("[z]\\b", names_training  )
+z <- grep ("^avg", names_training  )
+#train_pred <- cbind(training[,y], training[,r],training[,p],training[,ya],
+#                    classe=training$classe)
+
+train_pred <- cbind(training[,xx], training[,xy], training[,y],training[,xz],
+                    training[,r],training[,p],training[,ya],
+                    classe=training$classe)
+n <- dim(train_pred)[2]
+str(train_pred)
+featurePlot(x= train_pred[,1: 5], y=train_pred[,n], data=train_pred, plot="pairs", labels=c("Classe","predictors"))
+
+fit_rp <- train(classe~., data=train_pred, method="rpart", na.action = na.omit)
+
+trainpred <-predict(fit_rp, newdata=train_pred)
+
+confusionMatrix(trainpred, training$classe)
+
+test_pred <- predict(fit_rp, newdata=testing)
+test_pred
+
+ctrl <- trainControl(method = "cv")
+
+fit_lda <- train(classe~., data=train_pred, method="lda", trControl= ctrl, preProc=c("center","scale"), tuneLength=10)
+
+trainpred <-predict(fit_lda, newdata=train_pred)
+
+confusionMatrix(trainpred, training$classe)
+test_pred <- predict(fit_lda, newdata=testing)
+test_pred
+
+
+ctrl <- trainControl(method = "cv",classProbs=TRUE)
+
+fit_rda <- train(classe~., data=train_pred, method="rda", trControl= ctrl,
+                 metric="ROC", 
+                 preProc=c("center", "scale"))
+
+trainpred <-predict(fit_rda, newdata=train_pred)
+
+confusionMatrix(trainpred, training$classe)
+test_pred <- predict(fit_rda, newdata=testing)
+test_pred
+
+
+
+```
+
+## Summary of Selection
+
+The data set was studied and the corresponding predictors for the classe variable need to be identified.
+
+When looked in the data set which had 160 variables, took the absolutely necessary variables, like x, y, z co-ordinates for activities, their corresponding roll, pitch and yaw related variables. These gave me a good set of 50 predictors, which helped to avoid all variables with most of the NA values.
+
+Used this subset as the predictors and classe variable as response, created feature plots.
+
+Also, used random classifier rpart for to fit a model. Then, used the training predictor variables and predicted the values for the training set. Used ConfusionMatrix, and verified the Accuracy. The rpart model gave an accuracy of 49%.
+first, I tried reducing the no of predictors to that ends with x, y z alone and got the accuracy as 37%, when I included further more predictors, then I got the accuracy for 49%.
+
+
+Then, moved to check, different models in train function. Tried random forest, 
+due to my system RAM size, I could not fit this model. If performed for less predictors, random forest was working, but gave an accuracy of low value.
+
+So, I tried for other models like lda -(linear discriminant analysis) in caret package and it fitted the model and accuracy came to 70%. My confidence of the model increased. 
+
+Then, choose rda ("regularised discriminant analysis") and fitted the model and predicted for training data. This model gave an accuracy of around 90%. This gave me confident. So, selected this model as final model.  
+
+For verification I checked my model out for test predictions and checked the quiz values, which gave 95% of my answers correct. 
+
